@@ -32,7 +32,10 @@ function Update-CIPPOutOfOffice {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory=$true)]
-        [string]$userid,
+        [string]$CheckEmail, # Email to check for OoO
+
+        [Parameter(Mandatory=$true)]
+        [string]$ApplyEmail, # Email to apply OoO to
 
         [Parameter(Mandatory=$true)]
         [string]$TenantFilter,
@@ -41,13 +44,17 @@ function Update-CIPPOutOfOffice {
         [string]$ExecutingUser,
 
         [Parameter(Mandatory=$true)]
-        [string]$AccessToken, # Assuming access token is managed and provided by CIPP or retrieved securely
+        [string]$AccessToken,
 
         [string]$NewState = 'Scheduled',
 
         [string]$NewStartTime,
 
-        [string]$NewEndTime
+        [string]$NewEndTime,
+
+        [string]$ManualMessage, # Manually set OoO message
+
+        [string]$AdditionalOptions # Optional parameter for additional commands or scripts
     )
 
     $fallbackMessage = "Thanks for submitting a helpdesk ticket.`r`n`r`n" +
@@ -57,13 +64,13 @@ function Update-CIPPOutOfOffice {
                        "Just a heads up, there might be an extra charge as after-hours rates may apply.`r`n`r`n" +
                        "Sincerely,`r`nSimplePowerIT Help Desk Team"
 
-    $officeClosed = Check-CalendarForClosure -AccessToken $AccessToken -CalendarId "d6f9cb8bd5da494781011da1f75051aa856952238952057021"
+    $officeClosed = Check-CalendarForClosure -AccessToken $AccessToken -CalendarId "d6f9cb8bd5da494781011da1f75051aa856952238952057021" -DateToCheck (Get-Date).Date.ToString("yyyy-MM-dd")
 
     if ($officeClosed) {
         $fallbackMessage = "Office is closed today. Please contact us on the next business day."
     }
 
-    $currentSettings = Get-CIPPOutOfOffice -userid $userid -TenantFilter $TenantFilter -ExecutingUser $ExecutingUser
+    $currentSettings = Get-CIPPOutOfOffice -userid $CheckEmail -TenantFilter $TenantFilter -ExecutingUser $ExecutingUser
     if ($currentSettings -is [String]) {
         $newInternalMessage = $fallbackMessage
         $newExternalMessage = $fallbackMessage
@@ -71,6 +78,12 @@ function Update-CIPPOutOfOffice {
         $currentSettings = $currentSettings | ConvertFrom-Json
         $newInternalMessage = $currentSettings.InternalMessage
         $newExternalMessage = $currentSettings.ExternalMessage
+    }
+
+    # Apply manual message if provided
+    if ($ManualMessage) {
+        $newInternalMessage = $ManualMessage
+        $newExternalMessage = $ManualMessage
     }
 
     $today = Get-Date
@@ -88,7 +101,12 @@ function Update-CIPPOutOfOffice {
         $NewEndTime = $NewEndTime -ne $null ? $NewEndTime : $defaultEndTime
     }
 
-    $result = Set-CIPPOutOfOffice -userid $userid -InternalMessage $newInternalMessage -ExternalMessage $newExternalMessage -TenantFilter $TenantFilter -State $NewState -ExecutingUser $ExecutingUser -StartTime $NewStartTime -EndTime $NewEndTime
+    $result = Set-CIPPOutOfOffice -userid $ApplyEmail -InternalMessage $newInternalMessage -ExternalMessage $newExternalMessage -TenantFilter $TenantFilter -State $NewState -ExecutingUser $ExecutingUser -StartTime $NewStartTime -EndTime $NewEndTime
+
+    # Optionally run additional scripts or commands
+    if ($AdditionalOptions) {
+        Invoke-Expression $AdditionalOptions
+    }
 
     return $result
 }
